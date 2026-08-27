@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import ReadinessBanner from './ReadinessBanner';
 
 const NAV = [
   { to: '/dashboard/library', label: 'Voice Library', ico: '🎙️' },
@@ -66,6 +67,7 @@ export default function DashboardLayout() {
       </aside>
 
       <main className="main">
+        <ReadinessBanner />
         <Outlet />
       </main>
     </div>

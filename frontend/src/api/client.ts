@@ -62,8 +62,21 @@ export const mediaUrl = (path?: string | null): string => {
   return `${apiBase}${path}`;
 };
 
-// ---- auth --------------------------------------------------------------
+// ---- health ------------------------------------------------------------
+export interface HealthReport {
+  status: string;
+  app?: string;
+  env?: string;
+  ready: boolean;
+  warnings?: string[];
+}
+
 export const api = {
+  health() {
+    // Hit the backend directly (not proxied) so a config issue is visible
+    // even when nginx/SPA routing is the only thing up.
+    return unwrap<HealthReport>(http.get('/health'));
+  },
   register(data: { email: string; password: string; full_name?: string }) {
     return unwrap<AuthResponse>(http.post('/auth/register', data));
   },

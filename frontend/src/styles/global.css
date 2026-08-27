@@ -282,3 +282,36 @@ tr:hover td { background: rgba(255,255,255,0.015); }
   .nav { flex-direction: row; flex-wrap: wrap; }
   .userbox { margin-top: 10px; }
 }
+
+/* Readiness / setup banner (backend not fully configured) */
+.readiness-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: linear-gradient(135deg, rgba(255, 180, 84, 0.12), rgba(124, 92, 255, 0.10));
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+.readiness-icon { font-size: 20px; line-height: 1.2; }
+.readiness-body { flex: 1; min-width: 0; }
+.readiness-body strong { display: block; font-size: 15px; margin-bottom: 4px; }
+.readiness-body p { margin: 2px 0; font-size: 13.5px; color: var(--text-dim); }
+.readiness-body ul {
+  margin: 8px 0 4px;
+  padding-left: 18px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.readiness-body li { margin: 3px 0; }
+.readiness-fineprint {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-top: 8px;
+}
+.readiness-banner .btn-ghost { flex-shrink: 0; white-space: nowrap; }
+
+/* Constrain the banner on the wide landing page */
+.land-ready { max-width: 1140px; margin: 26px auto 0; padding: 0 24px; }

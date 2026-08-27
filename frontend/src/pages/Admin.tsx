@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, mediaUrl } from '../api/client';
+import ReadinessBanner from '../components/ReadinessBanner';
 import VoiceCard from '../components/VoiceCard';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -181,6 +182,7 @@ export default function Admin() {
 
   return (
     <div>
+      <ReadinessBanner />
       <div className="page-head">
         <div>
           <h1>Admin Dashboard</h1>

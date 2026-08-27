@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import ReadinessBanner from '../components/ReadinessBanner';
 import './landing.css';
 
 /* ---------------------------------------------------------------
@@ -144,6 +145,7 @@ export default function Landing() {
       </header>
 
       <main id="top">
+        <div className="land-ready"><ReadinessBanner /></div>
         {/* ---------- HERO ---------- */}
         <section className="hero" style={{ marginTop: 0 }}>
           <div className="hero-inner">

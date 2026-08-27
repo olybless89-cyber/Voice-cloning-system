@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import ReadinessBanner from '../components/ReadinessBanner';
 
 export default function Login() {
   const { login } = useAuth();
@@ -26,6 +27,7 @@ export default function Login() {
   return (
     <div className="auth-wrap">
       <div className="auth-card">
+        <ReadinessBanner />
         <div className="auth-brand">
           <div className="logo">V</div>
           <div>
