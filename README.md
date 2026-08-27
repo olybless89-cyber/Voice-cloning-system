@@ -118,6 +118,27 @@ nginx on `$PORT` (Railway's public port, default 80). The SPA talks to `/api`
 and `/uploads` on its own origin, which nginx proxies to `localhost:8000` — so
 **no `BACKEND_API_URL` or `VITE_API_BASE` is required** for the default setup.
 
+### Postgres + volume (one-time dashboard setup)
+The app and database are separate Railway services. `railway.json` covers the app
+service's build/healthcheck; the Postgres service and the volume are configured in
+the dashboard (Railway does not support creating those via config-as-code):
+
+1. **Create the app service** — New → GitHub repo → pick this repo. It builds from
+   the root `Dockerfile` automatically.
+2. **Add PostgreSQL** — New → Database → PostgreSQL. Railway provisions it and
+   exposes `DATABASE_URL`.
+3. **Reference the DB** — on the app service, Variables → add/reference
+   `DATABASE_URL = ${{Postgres.DATABASE_URL}}` (use the actual service name shown
+   in your canvas, e.g. `Postgres`).
+4. **Add a volume** — on the app service, **Volumes** tab → New Volume → mount at
+   `/data`. This persists uploaded samples, cloned voices and generated audio
+   (`UPLOAD_DIR` defaults to `/data/uploads`).
+5. **Add remaining env vars** — on the app service: `JWT_SECRET` (long, random),
+   `FRONTEND_URL` (your deployed https URL), and optionally `ELEVENLABS_API_KEY`.
+
+The admin account `admin@voiceclone.app` / `admin123` is seeded on first boot —
+**change it immediately in production**.
+
 ## Environment variables
 
 | Variable             | Default                        | Used by     |
