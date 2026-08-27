@@ -122,6 +122,14 @@ def clone_voice(
     # Persist the uploaded sample
     rel_sample, sample_path = storage.save_voice_sample(data, file.filename or "sample.mp3")
 
+    # Validate the actual content is audio, not just the filename extension.
+    if not audio_utils.sniff_is_audio(sample_path):
+        storage.remove(rel_sample)
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded file does not look like a valid audio file.",
+        )
+
     # Heuristic length guidance (~1 minute suggested). Not enforced strictly.
     sample_duration = audio_utils.probe_duration(sample_path)
     if sample_duration and sample_duration < 5 and audio_utils.ffmpeg_available():

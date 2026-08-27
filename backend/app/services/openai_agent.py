@@ -128,6 +128,3 @@ def clean_voice_name(name: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9]+", " ", name).strip()
     words = cleaned.split()
     return " ".join(w[:1].upper() + w[1:].lower() for w in words)[:120] or "Cloned Voice"
-
-
-openai_agent = None  # singleton marker used for config checks

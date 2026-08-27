@@ -88,6 +88,14 @@ def add_public_voice(
         )
 
     rel_sample, _ = storage.save_voice_sample(data, file.filename)
+
+    # Validate the actual content is audio, not just the filename extension.
+    if not audio_utils.sniff_is_audio(storage.path(rel_sample)):
+        storage.remove(rel_sample)
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded file does not look like a valid audio file.",
+        )
     voice = Voice(
         name=name.strip()[:120],
         description=description.strip() or None,
