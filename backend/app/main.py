@@ -51,12 +51,16 @@ def _readiness_problems() -> list[str]:
     problems: list[str] = []
     if settings.is_production:
         problems = settings.validate_production()
-        # Optional connectivity check — informational only when it works.
+        # Informational only: uses the reachability result cached at startup so
+        # /api/health never makes a blocking network call.
         try:
-            if settings.elevenlabs_api_key and not tts_provider.ping():
+            if (
+                settings.elevenlabs_api_key
+                and tts_provider.reachability_ok is False
+            ):
                 problems.append(
                     "ELEVENLABS_API_KEY is set but the ElevenLabs API was "
-                    "unreachable — generation may fail."
+                    "unreachable at startup — generation may fail."
                 )
         except Exception as exc:  # pragma: no cover
             logger.error("ElevenLabs reachability check failed: %s", exc)
@@ -72,6 +76,15 @@ async def lifespan(_: FastAPI):
         # Don't crash-loop the container over a DB hiccup; keep the healthcheck
         # up and log the real cause (health will report degraded).
         logger.error("Database init/seeding failed: %s", exc)
+    # One-time vendor reachability check (cached) so /api/health never blocks.
+    try:
+        tts_provider.reachability_ok = (
+            tts_provider.ping() if tts_provider.use_elevenlabs else None
+        )
+    except Exception as exc:  # pragma: no cover
+        logger.error("ElevenLabs reachability check failed: %s", exc)
+        tts_provider.reachability_ok = False
+
     problems = _readiness_problems()
     if problems:
         joined = "\n  - ".join(problems)

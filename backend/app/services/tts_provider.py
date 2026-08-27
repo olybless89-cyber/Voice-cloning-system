@@ -27,17 +27,24 @@ class TTSProvider:
     def __init__(self) -> None:
         self.api_key = settings.elevenlabs_api_key
         self.use_elevenlabs = bool(self.api_key)
+        # Populated once at startup (never per-healthcheck) so /api/health stays
+        # local and fast even when the vendor endpooint is slow/unreachable.
+        self.reachability_ok: bool | None = None
         logger.info(
             "TTS provider: %s",
             "ElevenLabs" if self.use_elevenlabs else "gTTS fallback (no ELEVENLABS_API_KEY)",
         )
 
-    def ping(self) -> bool:
-        """Return True when the ElevenLabs API is reachable with the configured key."""
+    def ping(self, timeout: float = 8.0) -> bool:
+        """Return True when the ElevenLabs API is reachable with the configured key.
+
+        Uses a short timeout so a health/probe call never blocks for long if the
+        vendor endpoint is slow or unreachable.
+        """
         if not self.use_elevenlabs:
             return False
         try:
-            with self._client() as client:
+            with httpx.Client(timeout=timeout) as client:
                 resp = client.get(f"{ELEVENLABS_API}/user")
                 return resp.status_code < 400
         except Exception:
