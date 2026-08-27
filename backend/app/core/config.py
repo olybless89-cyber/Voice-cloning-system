@@ -30,11 +30,15 @@ class Settings(BaseSettings):
     # CORS
     frontend_url: str = "http://localhost:5173"
 
-    # ── AI voice engine (ElevenLabs) ───────────────────────────────
-    # Required in production. When empty, the app refuses to start in
-    # production and (in development only) falls back to gTTS for demos.
+    # ── AI voice engine (ElevenLabs, optional) ─────────────────────
+    # Optional. When set, high-quality ElevenLabs neural voices and true
+    # voice cloning are used. When empty, the app transparently uses the free,
+    # no-key edge-tts (Microsoft Edge neural voices) so all core features work
+    # in production out of the box. gTTS remains as a final fallback.
     elevenlabs_api_key: str = ""
     elevenlabs_model: str = "eleven_multilingual_v2"
+    # Default edge-tts voice used for generation when no ElevenLabs key is set.
+    edge_voice: str = "en-US-AriaNeural"
 
     # ── OpenAI agent (LLM) ─────────────────────────────────────────
     # Optional: powers the Script Studio / voice-assistant features.
@@ -76,8 +80,14 @@ class Settings(BaseSettings):
             )
         if not self.jwt_secret or self.jwt_secret == "dev-secret-change-me":
             problems.append("JWT_SECRET must be a strong random secret.")
+        # ELEVENLABS_API_KEY is now optional: without it the app uses the free
+        # edge-tts engine. Only warn so operators know voices are limited to the
+        # built-in neural voices (no true per-user voice cloning).
         if not self.elevenlabs_api_key:
-            problems.append("ELEVENLABS_API_KEY is required in production.")
+            logger.info(
+                "ELEVENLABS_API_KEY not set — using free edge-tts for TTS "
+                "(no per-user voice cloning)."
+            )
         return problems
 
 

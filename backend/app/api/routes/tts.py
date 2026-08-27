@@ -59,6 +59,8 @@ def generate(
             str(storage.path(voice.audio_sample_path))
             if voice.audio_sample_path else None
         ),
+        # Hint only: lets the free edge-tts engine pick a suitable neural voice.
+        "name": voice.name,
     }
 
     try:
