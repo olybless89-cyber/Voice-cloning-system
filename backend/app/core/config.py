@@ -24,6 +24,8 @@ class Settings(BaseSettings):
 
     # Storage (override to /data/uploads in Railway with a mounted volume)
     upload_dir: str = "./uploads"
+    # Built SPA directory (present in the single-container image).
+    www_dir: str = "/app/www"
 
     # CORS
     frontend_url: str = "http://localhost:5173"

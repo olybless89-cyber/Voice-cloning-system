@@ -1,10 +1,12 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
@@ -130,3 +132,31 @@ app.mount(
     StaticFiles(directory=settings.upload_dir),
     name="uploads",
 )
+
+# ── SPA (served by the backend itself) ─────────────────────────────
+# Railway may route the public HTTP port to this backend directly (e.g.
+# port 8000) instead of nginx's $PORT, so we serve the built SPA here too.
+# Precedence: /api and /uploads are handled above; everything else falls
+# through to the SPA, including client-side (History API) routes.
+WWW_DIR = Path(settings.www_dir)
+
+if WWW_DIR.is_dir():
+    _ASSETS_DIR = WWW_DIR / "assets"
+    if _ASSETS_DIR.is_dir():
+        app.mount(
+            "/assets",
+            StaticFiles(directory=_ASSETS_DIR),
+            name="spa-assets",
+        )
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def spa(full_path: str):  # noqa: ANN001
+        return FileResponse(WWW_DIR / "index.html")
+
+else:
+    @app.exception_handler(StarletteHTTPException)
+    async def spa_404(_request, exc: StarletteHTTPException):
+        # Serve the SPA fallback for unknown paths when built assets are missing.
+        if exc.status_code in (404, 405):
+            return FileResponse(WWW_DIR / "index.html")
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)

@@ -131,6 +131,11 @@ nginx on `$PORT` (Railway's public port, default 80). The SPA talks to `/api`
 and `/uploads` on its own origin, which nginx proxies to `localhost:8000` — so
 **no `BACKEND_API_URL` or `VITE_API_BASE` is required** for the default setup.
 
+For extra resilience (some Railway configs route the public HTTP port straight
+to the backend rather than to nginx's port), the FastAPI app also serves the
+built SPA at `/` via a catch-all route with `/api` and `/uploads` taking
+precedence. So the UI loads whether Railway hits uvicorn directly or via nginx.
+
 ### Postgres + volume (one-time dashboard setup)
 The app and database are separate Railway services. `railway.json` covers the app
 service's build/healthcheck; the Postgres service and the volume are configured in
