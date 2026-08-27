@@ -123,13 +123,18 @@ class TTSProvider:
     def synthesize(self, text: str, voice_ref: dict | None) -> tuple[bytes, str]:
         """Returns (audio_bytes, extension). voice_ref selects the voice:
           - provider_voice_id -> ElevenLabs voice by id (when a key is set)
-          - audio_sample_path -> ElevenLabs instant-clone sample (when a key is set)
+          - audio_sample_path -> source recording; used for true ElevenLabs
+                                 instant cloning (key set) or best-effort
+                                 zero-key proximity cloning (no key)
           - name              -> hint used to pick a suitable free edge voice
           - fallback          -> edge-tts, then gTTS
         """
+        voice_ref = voice_ref or {}
+        provider_id = voice_ref.get("provider_voice_id")
+        sample_path = voice_ref.get("audio_sample_path")
+        is_clone = bool(sample_path)
+
         if self.use_elevenlabs:
-            provider_id = (voice_ref or {}).get("provider_voice_id")
-            sample_path = (voice_ref or {}).get("audio_sample_path")
             if provider_id or sample_path:
                 try:
                     if provider_id:
@@ -143,12 +148,24 @@ class TTSProvider:
                     if settings.is_production:
                         raise
                     logger.warning(
-                        "ElevenLabs synthesis failed, falling back to edge-tts: %s",
-                        exc,
+                        "ElevenLabs synthesis failed, falling back: %s", exc
                     )
+            # Even with a key, an untracked clone has no provider_voice_id; the
+            # sample still defines the voice, so fall through to proximity too.
+            if not sample_path:
+                # Stock ElevenLabs voice referenced by id only, or a plain
+                # library/demo voice.
+                return self._free_synthesize(text, voice_ref)
 
-        # Free default engine (no key required): edge-tts, then gTTS.
-        return self._free_synthesize(text, voice_ref)
+        # Free/no-key path. For clones with a recorded sample we don't fall
+        # through to a generic voice picked by name — we push the generated
+        # speech toward the recording's acoustic profile (proximity cloning).
+        audio_bytes, suffix = self._free_synthesize(text, voice_ref)
+        if is_clone:
+            audio_bytes = audio_utils.proximity_clone(
+                audio_bytes, suffix, Path(sample_path)
+            )
+        return audio_bytes, suffix
 
     def _free_synthesize(
         self, text: str, voice_ref: dict | None
