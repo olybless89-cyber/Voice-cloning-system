@@ -31,7 +31,8 @@ multi-speaker voice cloning:
 - **With `ELEVENLABS_API_KEY`** — real neural TTS + voice cloning (required in production).
 - **Without a key (development only)** — the platform falls back to the no-key
   **gTTS** service so the flow can be demoed locally. In `APP_ENV=production` a
-  missing key makes the app **refuse to boot** — the demo fallback is never used live.
+  missing key reports **`degraded`** on `/api/health` and TTS/cloning refuse —
+  the demo fallback is never used live.
 
 An optional **OpenAI agent** (`OPENAI_API_KEY`) powers the **Script Studio** AI
 writing assistant built into the Text-to-Speech page: rewrite in a tone,
@@ -108,8 +109,9 @@ Dockerfile, so **no language auto-detection (Nixpacks) is needed**.
 
 Required environment variables (set on the `app` service):
 
-- `APP_ENV` — `production`. In production the app **fails to boot** unless the
-  required secrets below are set, so it never silently serves demo audio.
+- `APP_ENV` — `production`. In production the app reports **`degraded`** on
+  `/api/health` until the required secrets below are set, and TTS/cloning refuse
+  until then — it never silently serves demo audio.
 - `DATABASE_URL` — Postgres connection string (Railway auto-provides for the `db` service).
 - `JWT_SECRET` — any long random string (not the default `dev-secret-change-me`).
 - `ELEVENLABS_API_KEY` — **required** — real neural TTS + voice cloning via ElevenLabs.
@@ -168,9 +170,10 @@ The admin account `admin@voiceclone.app` / `admin123` is seeded on first boot �
 | `FRONTEND_URL`          | `http://localhost:5173`        | backend      |
 | `BACKEND_API_URL`       | *(empty → same-origin proxy)*  | frontend     |
 
-> **Note:** in `APP_ENV=production` the backend refuses to boot if `DATABASE_URL`
-> is SQLite, `JWT_SECRET` is the default, or `ELEVENLABS_API_KEY` is missing — so
-> the demo gTTS fallback is never used in production.
+> **Note:** in `APP_ENV=production` the backend reports `status: degraded` on
+> `/api/health` (while still passing Railway's healthcheck) if `DATABASE_URL` is
+> SQLite, `JWT_SECRET` is the default, or `ELEVENLABS_API_KEY` is missing — so the
+> demo gTTS fallback is never used in production.
 
 ## API overview
 
@@ -208,8 +211,12 @@ POST /api/admin/voices/{id}/publish   -> promote a user voice to public
 - Uploaded audio types are validated (webm, mp3, m4a, opus, ogg, wav, flac).
 - In-process rate limiting protects `register`, `login`, `tts/generate` and
   `voices/clone` (HTTP 429 beyond the per-minute cap).
-- In `APP_ENV=production` the app fails fast if `DATABASE_URL` is SQLite, the
-  `JWT_SECRET` default is used, or `ELEVENLABS_API_KEY` is missing.
+- In `APP_ENV=production` the app **logs a `CONFIG READINESS` warning and reports
+  `status: degraded` on `/api/health`** when `DATABASE_URL` is SQLite, the
+  `JWT_SECRET` default is used, or `ELEVENLABS_API_KEY` is missing. It still
+  boots so the deploy passes Railway's healthcheck, but TTS/voice-cloning refuse
+  until those secrets are set. This keeps the container from crash-looping and
+  hiding the real error.
 - Change the seeded admin password (`admin@voiceclone.app`) immediately.
 
 ---

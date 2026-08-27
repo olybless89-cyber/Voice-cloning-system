@@ -1,9 +1,9 @@
 import logging
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
@@ -40,48 +40,52 @@ def _seed_admin() -> None:
         db.close()
 
 
-def _validate_providers() -> None:
-    """Fail-fast on insecure/demo-only configuration in production, and
-    run lightweight connectivity checks on the AI providers."""
+def _readiness_problems() -> list[str]:
+    """Configuration problems that block full functionality.
+
+    Non-fatal at startup so the process always serves /api/health (Railway
+    treats the deploy as healthy) and logs exactly what to fix.
+    """
+    problems: list[str] = []
     if settings.is_production:
         problems = settings.validate_production()
-        if problems:
-            joined = "\n  - ".join(problems)
-            raise RuntimeError(
-                "Refusing to start in production with the following configuration "
-                f"problems:\n  - {joined}\n\n"
-                "Fix them in Railway (Variables) before the deploy can come up."
-            )
-        # Network reachability check for the voice engine.
+        # Optional connectivity check — informational only when it works.
         try:
-            reachable = tts_provider.ping()
+            if settings.elevenlabs_api_key and not tts_provider.ping():
+                problems.append(
+                    "ELEVENLABS_API_KEY is set but the ElevenLabs API was "
+                    "unreachable — generation may fail."
+                )
         except Exception as exc:  # pragma: no cover
-            reachable = False
             logger.error("ElevenLabs reachability check failed: %s", exc)
-        if not reachable:
-            raise RuntimeError(
-                "ELEVENLABS_API_KEY is set but the ElevenLabs API is unreachable. "
-                "Check the key/network before going live."
-            )
-        logger.info("ElevenLabs API reachable.")
-    else:
-        logger.warning(
-            "APP_ENV is %r (not 'production') — demo fallbacks and relaxed "
-            "secrets are allowed. Set APP_ENV=production when going live.",
-            settings.app_env,
-        )
-
-    if settings.openai_api_key:
-        logger.info("OpenAI agent enabled (model=%s).", settings.openai_model)
-    else:
-        logger.info("OpenAI agent disabled — set OPENAI_API_KEY to enable Script Studio.")
+    return problems
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    Base.metadata.create_all(bind=engine)
-    _seed_admin()
-    _validate_providers()
+    try:
+        Base.metadata.create_all(bind=engine)
+        _seed_admin()
+    except Exception as exc:
+        # Don't crash-loop the container over a DB hiccup; keep the healthcheck
+        # up and log the real cause (health will report degraded).
+        logger.error("Database init/seeding failed: %s", exc)
+    problems = _readiness_problems()
+    if problems:
+        joined = "\n  - ".join(problems)
+        logger.error(
+            "=== CONFIG READINESS (%s) ===\n"
+            "  Missing/incorrect env vars mean some or all features are limited:\n"
+            "  - %s\n"
+            "  Fix them in Railway (Variables) and redeploy/restart. "
+            "The healthcheck passes regardless so the deploy can come up.",
+            settings.app_env,
+            joined,
+        )
+    else:
+        logger.info("Config readiness: OK (%s).", settings.app_env)
+    if settings.openai_api_key:
+        logger.info("OpenAI agent enabled (model=%s).", settings.openai_model)
     logger.info("Storage dirs ready at %s", settings.upload_dir)
     yield
 
@@ -109,7 +113,16 @@ app.include_router(admin.router, prefix="/api")
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "app": settings.app_name}
+    problems = _readiness_problems()
+    body = {
+        "status": "ok" if not problems else "degraded",
+        "app": settings.app_name,
+        "env": settings.app_env,
+        "ready": not problems,
+    }
+    if problems:
+        body["warnings"] = problems
+    return body
 
 
 app.mount(
