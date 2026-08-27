@@ -18,7 +18,7 @@ export default function DashboardLayout() {
         <div className="brand">
           <div className="logo">V</div>
           <div>
-            <h3>VoiceClone AI</h3>
+            <h3>Voxcraft</h3>
             <small>Text to speech platform</small>
           </div>
         </div>

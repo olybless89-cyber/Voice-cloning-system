@@ -32,6 +32,17 @@ class TTSProvider:
             "ElevenLabs" if self.use_elevenlabs else "gTTS fallback (no ELEVENLABS_API_KEY)",
         )
 
+    def ping(self) -> bool:
+        """Return True when the ElevenLabs API is reachable with the configured key."""
+        if not self.use_elevenlabs:
+            return False
+        try:
+            with self._client() as client:
+                resp = client.get(f"{ELEVENLABS_API}/user")
+                return resp.status_code < 400
+        except Exception:
+            return False
+
     def _client(self) -> httpx.Client:
         return httpx.Client(
             headers={"xi-api-key": self.api_key} if self.api_key else {},
@@ -85,9 +96,17 @@ class TTSProvider:
                         text, Path(provider_params["clone_sample"])
                     ), ".mp3"
             except TTSError as exc:
+                if settings.is_production:
+                    raise
                 logger.warning(
                     "ElevenLabs synthesis failed, falling back to gTTS: %s", exc
                 )
+
+        if not self.use_elevenlabs and settings.is_production:
+            raise TTSError(
+                "No voice engine configured. Set ELEVENLABS_API_KEY to generate "
+                "speech in production."
+            )
 
         return self._gtts_synthesize(text, voice_ref=voice_ref), ".mp3"
 
@@ -152,7 +171,11 @@ class TTSProvider:
                     return {"provider_voice_id": resp.json().get("voice_id")}
 
         # Fallback: no remote registration — the local reference sample is the
-        # clone, so synthesis reuses it.
+        # clone, so synthesis reuses it. (Demo-mode only.)
+        if settings.is_production:
+            raise TTSError(
+                "Voice cloning unavailable: no ELEVENLABS_API_KEY configured."
+            )
         logger.info(
             "No ElevenLabs key; storing clone locally using reference sample."
         )

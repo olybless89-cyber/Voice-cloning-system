@@ -30,7 +30,7 @@ export default function Login() {
           <div className="logo">V</div>
           <div>
             <h1>Welcome back</h1>
-            <p>Sign in to VoiceClone AI</p>
+            <p>Sign in to Voxcraft</p>
           </div>
         </div>
 

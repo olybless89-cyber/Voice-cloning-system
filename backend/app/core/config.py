@@ -1,13 +1,17 @@
+import logging
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # App
-    app_name: str = "VoiceClone AI"
+    # App / environment
+    app_name: str = "Voxcraft"
+    app_env: str = "production"  # development | production
     debug: bool = False
 
     # Database
@@ -24,9 +28,20 @@ class Settings(BaseSettings):
     # CORS
     frontend_url: str = "http://localhost:5173"
 
-    # AI provider
+    # ── AI voice engine (ElevenLabs) ───────────────────────────────
+    # Required in production. When empty, the app refuses to start in
+    # production and (in development only) falls back to gTTS for demos.
     elevenlabs_api_key: str = ""
     elevenlabs_model: str = "eleven_multilingual_v2"
+
+    # ── OpenAI agent (LLM) ─────────────────────────────────────────
+    # Optional: powers the Script Studio / voice-assistant features.
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+
+    # ── Rate limiting ──────────────────────────────────────────────
+    # Requests per minute, per client, on sensitive routes.
+    rate_limit_minute: int = 20
 
     @property
     def voice_dir(self) -> str:
@@ -37,11 +52,31 @@ class Settings(BaseSettings):
         return f"{self.upload_dir}/generations"
 
     @property
+    def is_production(self) -> bool:
+        return self.app_env.lower() == "production"
+
+    @property
     def cors_origins(self) -> list[str]:
         origins = [self.frontend_url]
         if self.debug:
             origins.append("http://localhost:5173")
         return list(dict.fromkeys(o for o in origins if o))
+
+    def validate_production(self) -> list[str]:
+        """Return a list of configuration problems. Fail-hard in production so
+        we never silently ship demo-grade behaviour."""
+        problems: list[str] = []
+
+        if not self.database_url or self.database_url.startswith("sqlite"):
+            problems.append(
+                "DATABASE_URL must point to PostgreSQL in production "
+                "(got a SQLite URL)."
+            )
+        if not self.jwt_secret or self.jwt_secret == "dev-secret-change-me":
+            problems.append("JWT_SECRET must be a strong random secret.")
+        if not self.elevenlabs_api_key:
+            problems.append("ELEVENLABS_API_KEY is required in production.")
+        return problems
 
 
 @lru_cache

@@ -23,15 +23,19 @@ A full-stack web platform that turns text into realistic AI voice audio and lets
 | AI / TTS  | ElevenLabs (text-to-speech + voice cloning) with a free **gTTS fallback** when no API key is configured |
 | Storage   | Local filesystem (mounted volume on Railway)       |
 
-## AI voice generation (ElevenLabs with free fallback)
+## AI voice generation (ElevenLabs + OpenAI agent)
 
-The TTS engine works out of the box with **zero configuration** using a local
-fallback so you can build and demo the whole flow immediately:
+The production voice engine is **ElevenLabs** for neural text-to-speech and
+multi-speaker voice cloning:
 
-- **With `ELEVENLABS_API_KEY` set** — real neural text-to-speech and multi-speaker voice cloning via ElevenLabs.
-- **Without a key** — the platform falls back to the free, no-key **gTTS** service. Voice cloning uploads are validated and stored, and cloned voices reuse the selected reference sample so the product flow works end to end without spending anything.
+- **With `ELEVENLABS_API_KEY`** — real neural TTS + voice cloning (required in production).
+- **Without a key (development only)** — the platform falls back to the no-key
+  **gTTS** service so the flow can be demoed locally. In `APP_ENV=production` a
+  missing key makes the app **refuse to boot** — the demo fallback is never used live.
 
-Set the key later and the platform switches to ElevenLabs automatically.
+An optional **OpenAI agent** (`OPENAI_API_KEY`) powers the **Script Studio** AI
+writing assistant built into the Text-to-Speech page: rewrite in a tone,
+proofread, translate, and summarise your script before it becomes audio.
 
 ## Project layout
 
@@ -104,10 +108,17 @@ Dockerfile, so **no language auto-detection (Nixpacks) is needed**.
 
 Required environment variables (set on the `app` service):
 
+- `APP_ENV` — `production`. In production the app **fails to boot** unless the
+  required secrets below are set, so it never silently serves demo audio.
 - `DATABASE_URL` — Postgres connection string (Railway auto-provides for the `db` service).
-- `JWT_SECRET` — any long random string.
+- `JWT_SECRET` — any long random string (not the default `dev-secret-change-me`).
+- `ELEVENLABS_API_KEY` — **required** — real neural TTS + voice cloning via ElevenLabs.
 - `FRONTEND_URL` — the https URL of your deployed app (for CORS).
-- `ELEVENLABS_API_KEY` — *optional*, enables real neural TTS + cloning.
+
+Optional:
+- `OPENAI_API_KEY` — enables the **Script Studio** AI writing agent (rewrite /
+  proofread / translate / summarise your text before it becomes speech).
+- `UPLOAD_DIR` — where audio is stored (default `/data/uploads` on the volume).
 
 Recommended: add a **Volume** mounted at `/data/uploads` so uploads persist
 across deploys. The app reads `UPLOAD_DIR` (default `/data/uploads`).
@@ -133,22 +144,33 @@ the dashboard (Railway does not support creating those via config-as-code):
 4. **Add a volume** — on the app service, **Volumes** tab → New Volume → mount at
    `/data`. This persists uploaded samples, cloned voices and generated audio
    (`UPLOAD_DIR` defaults to `/data/uploads`).
-5. **Add remaining env vars** — on the app service: `JWT_SECRET` (long, random),
-   `FRONTEND_URL` (your deployed https URL), and optionally `ELEVENLABS_API_KEY`.
+5. **Add remaining env vars** — on the app service: `APP_ENV=production`,
+   `JWT_SECRET` (long, random), `ELEVENLABS_API_KEY` (required), `FRONTEND_URL`
+   (your deployed https URL), and optionally `OPENAI_API_KEY` for Script Studio.
 
 The admin account `admin@voiceclone.app` / `admin123` is seeded on first boot —
 **change it immediately in production**.
 
 ## Environment variables
 
-| Variable             | Default                        | Used by     |
-|----------------------|--------------------------------|-------------|
-| `DATABASE_URL`       | `sqlite:///./voiceclone.db`    | backend     |
-| `JWT_SECRET`         | `dev-secret-change-me`         | backend     |
-| `ELEVENLABS_API_KEY` | *(empty → gTTS fallback)*      | backend     |
-| `UPLOAD_DIR`         | `/data/uploads`                | backend     |
-| `FRONTEND_URL`       | `http://localhost:5173`        | backend     |
-| `BACKEND_API_URL`    | `http://backend:8000`          | frontend    |
+| Variable                | Default                        | Used by      |
+|-------------------------|--------------------------------|--------------|
+| `APP_ENV`               | `production`                   | backend      |
+| `APP_NAME`              | `Voxcraft`                     | backend      |
+| `DATABASE_URL`          | `sqlite:///./voiceclone.db`    | backend      |
+| `JWT_SECRET`            | `dev-secret-change-me` (fail)  | backend      |
+| `ELEVENLABS_API_KEY`    | *(required in production)*     | backend      |
+| `ELEVENLABS_MODEL`      | `eleven_multilingual_v2`       | backend      |
+| `OPENAI_API_KEY`        | *(empty → Script Studio off)*  | backend      |
+| `OPENAI_MODEL`          | `gpt-4o-mini`                  | backend      |
+| `RATE_LIMIT_MINUTE`     | `20` (TTS gens/min per user)   | backend      |
+| `UPLOAD_DIR`            | `/data/uploads`                | backend      |
+| `FRONTEND_URL`          | `http://localhost:5173`        | backend      |
+| `BACKEND_API_URL`       | *(empty → same-origin proxy)*  | frontend     |
+
+> **Note:** in `APP_ENV=production` the backend refuses to boot if `DATABASE_URL`
+> is SQLite, `JWT_SECRET` is the default, or `ELEVENLABS_API_KEY` is missing — so
+> the demo gTTS fallback is never used in production.
 
 ## API overview
 
@@ -163,6 +185,13 @@ GET  /api/voices/tree            -> voices usable in TTS (public + mine)
 POST /api/tts/generate           -> generate audio from text
 GET  /api/tts/history            -> my generation history
 DELETE /api/tts/{id}             -> delete a generation
+# OpenAI agent (Script Studio) — auth required
+GET  /api/agent/status           -> {enabled, model, provider}
+POST /api/agent/rewrite          -> rewrite text in a tone ({text, option})
+POST /api/agent/proofread        -> fix grammar ({text})
+POST /api/agent/translate        -> translate ({text, option: language})
+POST /api/agent/summarise        -> short voiceover ({text, sentences})
+POST /api/agent/describe         -> voice description ({text, option})
 # admin
 GET  /api/admin/users
 POST /api/admin/voices           -> add public voice
@@ -177,6 +206,11 @@ POST /api/admin/voices/{id}/publish   -> promote a user voice to public
 - JWT bearer tokens are required for all voice/TTS/history routes.
 - Admin routes are protected by a role check on the token.
 - Uploaded audio types are validated (webm, mp3, m4a, opus, ogg, wav, flac).
+- In-process rate limiting protects `register`, `login`, `tts/generate` and
+  `voices/clone` (HTTP 429 beyond the per-minute cap).
+- In `APP_ENV=production` the app fails fast if `DATABASE_URL` is SQLite, the
+  `JWT_SECRET` default is used, or `ELEVENLABS_API_KEY` is missing.
+- Change the seeded admin password (`admin@voiceclone.app`) immediately.
 
 ---
 

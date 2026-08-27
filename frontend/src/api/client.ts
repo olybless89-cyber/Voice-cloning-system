@@ -112,6 +112,36 @@ export const api = {
     return unwrap<{ status: string }>(http.delete(`/voices/${id}`));
   },
 
+  // ---- agent (OpenAI Script Studio) ----
+  agentStatus() {
+    return unwrap<{ enabled: boolean; model?: string | null; provider: string }>(
+      http.get('/agent/status')
+    );
+  },
+  agentRewrite(text: string, tone: string) {
+    return unwrap<{ text: string }>(
+      http.post('/agent/rewrite', { text, option: tone })
+    );
+  },
+  agentProofread(text: string) {
+    return unwrap<{ text: string }>(http.post('/agent/proofread', { text }));
+  },
+  agentTranslate(text: string, language: string) {
+    return unwrap<{ text: string }>(
+      http.post('/agent/translate', { text, option: language })
+    );
+  },
+  agentSummarise(text: string, sentences: number) {
+    return unwrap<{ text: string }>(
+      http.post('/agent/summarise', { text, sentences })
+    );
+  },
+  agentDescribe(name: string) {
+    return unwrap<{ text: string }>(
+      http.post('/agent/describe', { text: name, option: name })
+    );
+  },
+
   // ---- tts ----
   generate(voiceId: number, text: string) {
     return unwrap<Generation>(

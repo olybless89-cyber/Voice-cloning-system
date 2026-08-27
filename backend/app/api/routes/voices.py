@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.urls import audio_url
 from app.core.database import get_db
+from app.core.ratelimit import rate_limit
 from app.core.security import get_current_user
 from app.models.user import User
 from app.models.voice import Voice, VoiceStatus
@@ -101,6 +102,7 @@ def clone_voice(
     name: str | None = None,
     current: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    _rl: None = Depends(rate_limit(6)),
 ):
     """Upload a ~1 minute audio sample and create a cloned voice.
 

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, mediaUrl } from '../api/client';
 import AudioPlayer from '../components/AudioPlayer';
+import ScriptStudio from '../components/ScriptStudio';
 import { useToast } from '../context/ToastContext';
 import type { Generation, TreeItem } from '../types';
 
@@ -136,6 +137,8 @@ export default function TTS() {
           {generating ? 'Generating speech…' : 'Generate Audio'}
         </button>
       </div>
+
+      <ScriptStudio text={text} onApply={(t) => { setText(t); setResult(null); }} />
 
       {generating && (
         <div className="panel flex-row">

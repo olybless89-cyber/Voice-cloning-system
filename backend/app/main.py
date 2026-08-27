@@ -10,7 +10,8 @@ from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
 from app.core.security import hash_password
 from app.models.user import User
-from app.api.routes import admin, auth, tts, voices
+from app.api.routes import admin, agent, auth, tts, voices
+from app.services.tts_provider import tts_provider
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("uvicorn")
@@ -39,10 +40,48 @@ def _seed_admin() -> None:
         db.close()
 
 
+def _validate_providers() -> None:
+    """Fail-fast on insecure/demo-only configuration in production, and
+    run lightweight connectivity checks on the AI providers."""
+    if settings.is_production:
+        problems = settings.validate_production()
+        if problems:
+            joined = "\n  - ".join(problems)
+            raise RuntimeError(
+                "Refusing to start in production with the following configuration "
+                f"problems:\n  - {joined}\n\n"
+                "Fix them in Railway (Variables) before the deploy can come up."
+            )
+        # Network reachability check for the voice engine.
+        try:
+            reachable = tts_provider.ping()
+        except Exception as exc:  # pragma: no cover
+            reachable = False
+            logger.error("ElevenLabs reachability check failed: %s", exc)
+        if not reachable:
+            raise RuntimeError(
+                "ELEVENLABS_API_KEY is set but the ElevenLabs API is unreachable. "
+                "Check the key/network before going live."
+            )
+        logger.info("ElevenLabs API reachable.")
+    else:
+        logger.warning(
+            "APP_ENV is %r (not 'production') — demo fallbacks and relaxed "
+            "secrets are allowed. Set APP_ENV=production when going live.",
+            settings.app_env,
+        )
+
+    if settings.openai_api_key:
+        logger.info("OpenAI agent enabled (model=%s).", settings.openai_model)
+    else:
+        logger.info("OpenAI agent disabled — set OPENAI_API_KEY to enable Script Studio.")
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
     _seed_admin()
+    _validate_providers()
     logger.info("Storage dirs ready at %s", settings.upload_dir)
     yield
 
@@ -64,6 +103,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api")
 app.include_router(voices.router, prefix="/api")
 app.include_router(tts.router, prefix="/api")
+app.include_router(agent.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 
 

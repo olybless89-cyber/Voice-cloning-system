@@ -4,7 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.urls import audio_url
+from app.core.config import settings
 from app.core.database import get_db
+from app.core.ratelimit import rate_limit
 from app.core.security import get_current_user
 from app.models.generation import Generation
 from app.models.user import User
@@ -47,6 +49,7 @@ def generate(
     payload: GenerationRequest,
     current: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    _rl: None = Depends(rate_limit(settings.rate_limit_minute)),
 ):
     voice = _resolve_voice(db, payload.voice_id, current)
 
