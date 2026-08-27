@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
 from app.core.security import hash_password
 from app.models.user import User
-from app.api.routes import admin, agent, auth, tts, voices
+from app.api.routes import admin, agent, auth, demo, tts, voices
 from app.services.tts_provider import tts_provider
 
 logging.basicConfig(level=logging.INFO)
@@ -124,6 +124,7 @@ app.include_router(voices.router, prefix="/api")
 app.include_router(tts.router, prefix="/api")
 app.include_router(agent.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
+app.include_router(demo.router, prefix="/api")
 
 
 @app.get("/api/health")

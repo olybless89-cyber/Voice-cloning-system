@@ -30,7 +30,28 @@ EDGE_VOICE_ALIASES = {
     "aurora": "en-GB-SoniaNeural",
     "nolan": "en-US-GuyNeural",
     "iris": "en-AU-NatashaNeural",
+    "atlas": "en-US-ChristopherNeural",
+    "sable": "fr-FR-DeniseNeural",
+    "kei": "ja-JP-NanamiNeural",
 }
+
+# Public "library" voices shown on the landing page with one-click previews.
+# Each maps to a free edge-tts neural voice; the backend generates a real,
+# playable sample for the demo so previews work with no ElevenLabs key.
+LIBRARY_VOICES = [
+    {"name": "Aurora", "tag": "Neural · EN-GB", "mood": "Bright, cinematic"},
+    {"name": "Nolan", "tag": "Deep · EN-US", "mood": "Grounded, assured"},
+    {"name": "Iris", "tag": "Warm · EN-AU", "mood": "Soft, close"},
+    {"name": "Atlas", "tag": "Narrative · EN-US", "mood": "Documentary weight"},
+    {"name": "Sable", "tag": "Intimate · FR", "mood": "Velvet, hushed"},
+    {"name": "Kei", "tag": "Precise · EN-JP", "mood": "Crisp, editorial"},
+]
+
+# Short sample spoken when previewing a library voice.
+LIBRARY_SAMPLE = (
+    "Hello, I am {name}. Listen closely — this is what your next script "
+    "could sound like, right before you use it."
+)
 
 
 class TTSError(Exception):
@@ -178,6 +199,34 @@ class TTSProvider:
         if not data:
             raise TTSError("edge-tts produced empty audio")
         return data
+
+    @staticmethod
+    def library_voices() -> list[dict]:
+        """The public library voices shown on the landing page, including each
+        voice's preview URL (a real audio sample generated on demand)."""
+        from app.api.urls import demo_preview_url
+
+        return [
+            {
+                "name": v["name"],
+                "tag": v["tag"],
+                "mood": v["mood"],
+                "preview_url": demo_preview_url(v["name"]),
+            }
+            for v in LIBRARY_VOICES
+        ]
+
+    def synthesize_demo(self, text: str, voice_name: str) -> bytes:
+        """Generate real speech for the landing demo / library preview for a
+        named voice. Uses the free edge-tts engine; falls back to gTTS."""
+        voice_ref = {"name": voice_name or ""}
+        try:
+            return self._edge_synthesize(text[:2000], voice_ref=voice_ref)
+        except TTSError as exc:
+            logger.warning(
+                "edge-tts demo synthesis failed, falling back to gTTS: %s", exc
+            )
+            return self._gtts_synthesize(text[:2000], voice_ref=voice_ref)
 
     def _gtts_synthesize(self, text: str, voice_ref: dict | None) -> bytes:
         try:

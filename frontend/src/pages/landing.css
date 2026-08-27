@@ -363,8 +363,9 @@
 }
 .speak:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(0,212,176,0.4); }
 .speak.speaking { background: var(--ember); color: #170a04; box-shadow: 0 0 0 6px var(--ember-soft); }
-.speak:disabled { opacity: 0.4; cursor: not-allowed; }
-.demo-note { margin-top: 12px; font-size: 12px; color: var(--ember); }
+.speak.busy { background: var(--violet); color: #0c0a1a; cursor: progress; }
+.speak:disabled { opacity: 0.55; cursor: progress; }
+.demo-note { margin-top: 12px; font-size: 12px; color: var(--ember); max-width: 420px; margin-inline: auto; }
 
 /* ---------- Stats ---------- */
 .statsband {
@@ -525,11 +526,15 @@
   border-radius: 18px;
   padding: 22px;
   background: var(--ink-2);
+  position: relative;
+  cursor: pointer;
   animation: fadeUp 0.7s both;
   animation-delay: calc(var(--i, 0) * 60ms);
-  transition: border-color 0.3s ease, transform 0.3s ease;
+  transition: border-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+  user-select: none;
 }
 .voice-card:hover { border-color: rgba(0,212,176,0.4); transform: translateY(-3px); }
+.voice-card.playing { border-color: var(--teal); box-shadow: 0 0 0 1px var(--teal), 0 18px 40px rgba(0,212,176,0.15); }
 .vc-avatar {
   width: 46px; height: 46px;
   border-radius: 50%;
@@ -539,6 +544,7 @@
   color: #06130f;
   background: linear-gradient(135deg, var(--teal), #34e0c2);
   margin-bottom: 16px;
+  position: relative;
 }
 .voice-card:nth-child(3n+2) .vc-avatar { background: linear-gradient(135deg, var(--ember), #ffb07a); color: #16090a; }
 .voice-card:nth-child(3n+3) .vc-avatar { background: linear-gradient(135deg, var(--violet), #c3b7ff); color: #0c0a1a; }
@@ -547,7 +553,46 @@
 .vc-mood { color: var(--text-faint); font-size: 13px; margin-top: 10px; }
 .vc-bar { height: 3px; background: rgba(255,255,255,0.07); border-radius: 3px; margin-top: 16px; overflow: hidden; }
 .vc-bar span { display: block; height: 100%; background: linear-gradient(90deg, var(--teal), #3ae0c5); border-radius: 3px; }
-.voices-note { margin-top: 30px; text-align: center; color: var(--text-dim); font-size: 14px; }
+
+/* Play affordance + equaliser on hover/playing */
+.vc-play {
+  position: absolute; top: 18px; right: 18px;
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  background: rgba(6,19,15,0.75);
+  border: 1px solid var(--line-2);
+  color: var(--teal);
+  font-size: 12px;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 0.25s ease, transform 0.25s ease, background 0.2s ease;
+}
+.voice-card:hover .vc-play { opacity: 1; transform: translateY(0); }
+.voice-card.playing .vc-play { opacity: 1; transform: none; background: var(--ember); color: #170a04; border-color: var(--ember); }
+.vc-eq {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  gap: 3px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.voice-card.playing .vc-eq { opacity: 1; }
+.vc-eq i {
+  width: 3px; height: 14px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.95);
+  animation: eq-bounce 0.7s ease-in-out infinite;
+}
+.vc-eq i:nth-child(2) { animation-delay: 0.2s; }
+.vc-eq i:nth-child(3) { animation-delay: 0.4s; }
+@keyframes eq-bounce {
+  0%,100% { transform: scaleY(0.4); }
+  50% { transform: scaleY(1); }
+}
+.voice-card.playing .vc-avatar { opacity: 0.55; }
+.voices-hint { margin-top: 20px; text-align: center; color: var(--text-faint); font-size: 12px; letter-spacing: 0.04em; }
+.voices-note { margin-top: 16px; text-align: center; color: var(--text-dim); font-size: 14px; }
 .voices-note a { color: var(--teal); text-decoration: none; border-bottom: 1px solid rgba(0,212,176,0.4); transition: all 0.2s ease; }
 .voices-note a:hover { border-color: var(--teal); color: #fff; }
 

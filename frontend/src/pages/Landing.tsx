@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import ReadinessBanner from '../components/ReadinessBanner';
+import { apiBase } from '../api/client';
 import './landing.css';
 
 /* ---------------------------------------------------------------
@@ -73,8 +74,16 @@ export default function Landing() {
   const [demoText, setDemoText] = useState('Welcome to Voxcraft. Type anything here and I will speak it back to you.');
   const [activeVoice, setActiveVoice] = useState(DEMO_VOICES[0]);
   const [speaking, setSpeaking] = useState(false);
+  const [demoBusy, setDemoBusy] = useState(false);
+  const [demoError, setDemoError] = useState<string | null>(null);
   const [wave, setWave] = useState<number[]>(Array(40).fill(0.35));
   const synthRef = useRef<SpeechSynthesis | null>(null);
+
+  // Library previews (backend-backed so real audio plays on click).
+  const [libraryVoices, setLibraryVoices] = useState<Array<{ name: string; tag: string; mood: string; preview_url?: string }>>(LIBRARY_VOICES);
+  const [playing, setPlaying] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     const t = setInterval(() => setCmd((c) => (c + 1) % STEPS.length), 3200);
@@ -83,32 +92,94 @@ export default function Landing() {
 
   useEffect(() => {
     synthRef.current = 'speechSynthesis' in window ? window.speechSynthesis : null;
-    if (synthRef.current) synthRef.current.cancel();
-  }, [activeVoice.id]);
+  }, []);
 
-  const speak = () => {
-    const synth = synthRef.current;
-    if (!synth) return;
-    synth.cancel();
+  // Animate the equaliser while anything is speaking.
+  useEffect(() => {
+    let tick: number | undefined;
     if (speaking) {
-      setSpeaking(false);
-      return;
-    }
-    const u = new SpeechSynthesisUtterance(demoText || 'Say something first.');
-    u.pitch = activeVoice.pitch;
-    u.rate = activeVoice.rate;
-    u.onstart = () => setSpeaking(true);
-    u.onend = () => setSpeaking(false);
-    u.onerror = () => setSpeaking(false);
-    synth.speak(u);
-    // Animate the equaliser bars while speaking
-    const tick = setInterval(() => {
-      setWave(Array.from({ length: 40 }, () => 0.2 + Math.random() * 0.8));
-    }, 120);
-    u.addEventListener('end', () => {
-      clearInterval(tick);
+      tick = window.setInterval(() => setWave(Array.from({ length: 40 }, () => 0.2 + Math.random() * 0.8)), 120);
+    } else {
       setWave(Array(40).fill(0.35));
-    });
+    }
+    return () => { if (tick) window.clearInterval(tick); };
+  }, [speaking]);
+
+  // Pull the real library voices (with preview URLs) from the backend.
+  useEffect(() => {
+    let active = true;
+    fetch(`${apiBase}/api/demo/voices`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (active && Array.isArray(data) && data.length) setLibraryVoices(data);
+      })
+      .catch(() => { /* keep the built-in fallback list */ });
+    return () => { active = false; };
+  }, []);
+
+  const stopAudio = () => {
+    const a = audioRef.current;
+    if (a) { a.pause(); a.currentTime = 0; a.removeAttribute('src'); a.load(); }
+  };
+
+  // Library: one-click preview of any voice. Clicking again stops it.
+  const toggleLibraryVoice = (voice: { name: string; preview_url?: string }) => {
+    if (playing === voice.name) { stopAudio(); setPlaying(null); return; }
+    stopAudio();
+    const path = voice.preview_url || `/api/demo/preview?voice=${encodeURIComponent(voice.name)}`;
+    const url = `${apiBase}${path}`;
+    setPlaying(voice.name);
+    setPreviewLoading(voice.name);
+    const audio = audioRef.current ?? new Audio();
+    audioRef.current = audio;
+    audio.src = url;
+    audio.onended = () => setPlaying(null);
+    audio.onerror = () => { setPlaying(null); setPreviewLoading(null); };
+    audio.play()
+      .then(() => setPreviewLoading(null))
+      .catch(() => { setPlaying(null); setPreviewLoading(null); });
+  };
+
+  // Live demo: prefer the backend edge-tts engine (reliable everywhere),
+  // fall back to the browser's Web Speech API if offline/backend-down.
+  const speak = async () => {
+    if (speaking) { stopAudio(); setSpeaking(false); return; }
+    stopAudio();
+    const synth = synthRef.current;
+    const text = demoText || 'Say something first.';
+    setDemoBusy(true);
+    setDemoError(null);
+    try {
+      const params = new URLSearchParams({ voice: activeVoice.name, text });
+      const res = await fetch(`${apiBase}/api/demo/speak?${params.toString()}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      if (synth) synth.cancel();
+      const audio = audioRef.current ?? new Audio();
+      audioRef.current = audio;
+      audio.src = URL.createObjectURL(blob);
+      audio.onended = () => setSpeaking(false);
+      audio.onerror = () => setSpeaking(false);
+      await audio.play();
+      setSpeaking(true);
+    } catch {
+      // Fallback: browser speech synthesis.
+      setDemoError('Backend unreachable — using your browser\u2019s built-in voice.');
+      if (synth) {
+        synth.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.pitch = activeVoice.pitch;
+        u.rate = activeVoice.rate;
+        u.onstart = () => setSpeaking(true);
+        u.onend = () => setSpeaking(false);
+        u.onerror = () => setSpeaking(false);
+        synth.speak(u);
+      } else {
+        setDemoError('Speech is unavailable in this browser.');
+      }
+    } finally {
+      setDemoBusy(false);
+    }
   };
 
   return (
@@ -219,12 +290,13 @@ export default function Landing() {
                     </button>
                   ))}
                 </div>
-                <button className={`speak ${speaking ? 'speaking' : ''}`} onClick={speak} disabled={!('speechSynthesis' in window)}>
-                  {speaking ? '■ Stop' : '▶ Speak it'}
+                <button className={`speak ${speaking ? 'speaking' : ''} ${demoBusy ? 'busy' : ''}`} onClick={speak} disabled={demoBusy}>
+                  {demoBusy ? '… Generating' : speaking ? '■ Stop' : '▶ Speak it'}
                 </button>
               </div>
-              {!('speechSynthesis' in window) && (
-                <p className="demo-note">Your browser doesn't support speech — the full demo lives in the studio.</p>
+              {demoError && <p className="demo-note">{demoError}</p>}
+              {!demoError && !('speechSynthesis' in window) && (
+                <p className="demo-note">Heads up: your browser can't fall back to a built-in voice, but the studio engine still speaks.</p>
               )}
             </div>
           </div>
@@ -330,20 +402,36 @@ export default function Landing() {
             </h2>
           </div>
           <div className="voice-grid">
-            {LIBRARY_VOICES.map((v, i) => (
-              <article
-                className="voice-card"
-                key={v.name}
-                style={{ '--i': i } as React.CSSProperties}
-              >
-                <div className="vc-avatar" aria-hidden="true">{v.name[0]}</div>
-                <div className="vc-name">{v.name}</div>
-                <div className="vc-tag mono">{v.tag}</div>
-                <div className="vc-mood">{v.mood}</div>
-                <div className="vc-bar"><span style={{ width: `${45 + (i * 9) % 50}%` }} /></div>
-              </article>
-            ))}
+            {libraryVoices.map((v, i) => {
+              const isOn = playing === v.name;
+              return (
+                <article
+                  className={`voice-card ${isOn ? 'playing' : ''}`}
+                  key={v.name}
+                  style={{ '--i': i } as React.CSSProperties}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={isOn}
+                  aria-label={isOn ? `Stop preview of ${v.name}` : `Preview ${v.name}`}
+                  onClick={() => toggleLibraryVoice(v)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleLibraryVoice(v); } }}
+                >
+                  <span className="vc-play mono" aria-hidden="true">{isOn ? '■' : '▶'}</span>
+                  <div className="vc-avatar" aria-hidden="true">{v.name[0]}</div>
+                  <div className="vc-name">{v.name}</div>
+                  <div className="vc-tag mono">{v.tag}</div>
+                  <div className="vc-mood">{v.mood}</div>
+                  <div className="vc-bar">
+                    <span
+                      style={{ width: `${45 + ((i * 9) % 60)}%`, ...(isOn ? { width: '100%', transition: 'width 0.3s ease' } : {}) }}
+                    />
+                  </div>
+                  {(previewLoading === v.name) && <div className="vc-eq" aria-hidden="true"><i /><i /><i /></div>}
+                </article>
+              );
+            })}
           </div>
+          <p className="voices-hint mono">▶ Click any voice to preview it</p>
           <p className="voices-note">
             …and the entire world of languages. <Link to={user ? '/dashboard/library' : '/register'}>Open the full library →</Link>
           </p>
