@@ -91,29 +91,32 @@ password: admin123
 
 ## Deploy to Railway
 
-Railway will auto-detect this repo using [`railway.json`](./railway.json) and the
-provided [`Dockerfile`](./backend/Dockerfile) / [`frontend/Dockerfile`](./frontend/Dockerfile).
+The repo is a **single all-in-one container**. The root [`Dockerfile`](./Dockerfile)
+builds the frontend (Node) and backend (Python) and serves both from one service:
+nginx serves the built SPA and proxies `/api` and `/uploads` to the local uvicorn
+backend. [`railway.json`](./railway.json) already points Railway at the root
+Dockerfile, so **no language auto-detection (Nixpacks) is needed**.
 
-| Service          | Kind     | Notes                                                           |
-|------------------|----------|-----------------------------------------------------------------|
-| `backend`        | Docker   | ASGI server on `$PORT` (default 8000). Mounts `uploads` volume. |
-| `frontend`       | Docker   | Nginx serving the built SPA, proxying `/api` to the backend.    |
-| `db`             | Postgres | `DATABASE_URL` from its connection string.                      |
+| Service | Kind     | Notes                                                        |
+|---------|----------|--------------------------------------------------------------|
+| `app`   | Docker   | Single container: nginx (SPA + proxy) + FastAPI backend.     |
+| `db`    | Postgres | `DATABASE_URL` from its connection string.                   |
 
-Required environment variables:
+Required environment variables (set on the `app` service):
 
 - `DATABASE_URL` — Postgres connection string (Railway auto-provides for the `db` service).
 - `JWT_SECRET` — any long random string.
-- `FRONTEND_URL` — the https URL of your deployed frontend (for CORS).
+- `FRONTEND_URL` — the https URL of your deployed app (for CORS).
 - `ELEVENLABS_API_KEY` — *optional*, enables real neural TTS + cloning.
 
-Recommended for the backend service: add a **Volume** mounted at `/data/uploads`.
-The app reads `UPLOAD_DIR` (default `/data/uploads`) so uploads persist across deploys.
+Recommended: add a **Volume** mounted at `/data/uploads` so uploads persist
+across deploys. The app reads `UPLOAD_DIR` (default `/data/uploads`).
 
-### Nginx proxy note
-The frontend container proxies `location /api` and `/uploads` to the backend.
-Point `BACKEND_API_URL` at the backend service's public URL so the SPA and nginx
-can reach it (defaults to `http://backend:8000`).
+### How the container boots
+[`start.sh`](./start.sh) starts uvicorn on `$BACKEND_PORT` (default 8000) and
+nginx on `$PORT` (Railway's public port, default 80). The SPA talks to `/api`
+and `/uploads` on its own origin, which nginx proxies to `localhost:8000` — so
+**no `BACKEND_API_URL` or `VITE_API_BASE` is required** for the default setup.
 
 ## Environment variables
 
